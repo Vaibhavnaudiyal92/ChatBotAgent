@@ -5,8 +5,9 @@ from fastapi.responses import StreamingResponse
 from langchain_core.messages import HumanMessage
 
 from graph.builder import chatbot
-from db.checkpointer import checkpointer
+from db.checkpointer import checkpointer, conn
 import json
+from services.title_service import generate_chat_title
 
 router = APIRouter()
 
@@ -15,6 +16,9 @@ class ChatRequest(BaseModel):
     query: str
     thread_id: str
 
+class UploadRequest(BaseModel):
+    thread_id: str
+    documents: list[dict]
 
 @router.get("/")
 def home():
@@ -24,16 +28,24 @@ def home():
 @router.get("/threads")
 def get_threads():
 
-    all_threads = set()
+    cursor = conn.cursor()
 
-    for checkpoint in checkpointer.list(None):
+    rows = cursor.execute("""
+        SELECT thread_id, title
+        FROM thread_titles
+    """).fetchall()
 
-        thread_id = checkpoint.config["configurable"]["thread_id"]
+    threads = []
 
-        all_threads.add(thread_id)
+    for row in rows:
+
+        threads.append({
+            "thread_id": row[0],
+            "title": row[1]
+        })
 
     return {
-        "threads": list(all_threads)
+        "threads": threads
     }
 
 
@@ -69,6 +81,56 @@ def get_thread_messages(thread_id: str):
 
 @router.post("/chat")
 def chat(request: ChatRequest):
+
+    cursor = conn.cursor()
+
+    existing_title = cursor.execute(
+        """
+        SELECT title
+        FROM thread_titles
+        WHERE thread_id = ?
+        """,
+        (request.thread_id,)
+    ).fetchone()
+
+    if not existing_title:
+
+        generated_title = generate_chat_title(
+            request.query
+        )
+
+        if generated_title:
+
+            cursor.execute(
+                """
+                INSERT INTO thread_titles (
+                    thread_id,
+                    title
+                )
+                VALUES (?, ?)
+                """,
+                (
+                    request.thread_id,
+                    generated_title
+                )
+            )
+
+            conn.commit()
+    #     cursor.execute(
+    #     """
+    #     INSERT OR IGNORE INTO thread_titles (
+    #         thread_id,
+    #         title
+    #     )
+    #     VALUES (?, ?)
+    #     """,
+    #     (
+    #         request.thread_id,
+    #         "New Chat"
+    #     )
+    # )
+
+    #     conn.commit()
 
     def generate():
 
@@ -106,3 +168,32 @@ def chat(request: ChatRequest):
                 }) + "\n"
 
     return StreamingResponse(generate(), media_type="text/plain")
+
+@router.post("/upload")
+def upload_documents(request: UploadRequest):
+
+    cursor = conn.cursor()
+
+    for doc in request.documents:
+
+        cursor.execute(
+            """
+            INSERT INTO documents (
+                thread_id,
+                filename,
+                content
+            )
+            VALUES (?, ?, ?)
+            """,
+            (
+                request.thread_id,
+                doc["filename"],
+                doc["content"]
+            )
+        )
+
+    conn.commit()
+
+    return {
+        "status": "success"
+    }

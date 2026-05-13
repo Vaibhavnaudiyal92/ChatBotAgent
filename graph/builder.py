@@ -4,12 +4,12 @@ from db.checkpointer import checkpointer
 from graph.nodes import chat_node
 from langgraph.prebuilt import ToolNode
 from langgraph.prebuilt import tools_condition
-from tools.basic_tools import multiply
+from tools.basic_tools import multiply, search_uploaded_documents
 
 graph = StateGraph(ChatState)
 graph.add_node("chat_node", chat_node)
 tool_node = ToolNode(
-    tools=[multiply]
+    tools=[multiply,search_uploaded_documents]
 )
 
 graph.add_node(

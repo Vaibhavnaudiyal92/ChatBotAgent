@@ -2,6 +2,8 @@ import streamlit as st
 import requests
 import uuid
 import json
+from pypdf import PdfReader
+import io
 
 # ************************ API URLs ************************
 
@@ -62,6 +64,77 @@ if "message_history" not in st.session_state:
 
 st.sidebar.title("AI Agent Chatbot")
 
+
+uploaded_files = st.sidebar.file_uploader(
+    "Upload Documents",
+    type=["txt", "pdf"],
+    accept_multiple_files=True
+)
+
+if uploaded_files and st.sidebar.button(
+    "Upload Files"
+):
+
+    files_payload = []
+
+    for file in uploaded_files:
+
+        content = ""
+
+        # =========================
+        # TXT FILES
+        # =========================
+
+        if file.type == "text/plain":
+
+            content = file.read().decode(
+                "utf-8",
+                errors="ignore"
+            )
+
+        # =========================
+        # PDF FILES
+        # =========================
+
+        elif file.type == "application/pdf":
+
+            pdf_reader = PdfReader(
+                io.BytesIO(file.read())
+            )
+
+            for page in pdf_reader.pages:
+
+                text = page.extract_text()
+
+                if text:
+
+                    content += text + "\n"
+
+        files_payload.append({
+            "filename": file.name,
+            "content": content
+        })
+
+    response = requests.post(
+        "http://127.0.0.1:8000/upload",
+        json={
+            "thread_id": st.session_state.thread_id,
+            "documents": files_payload
+        }
+    )
+
+    if response.status_code == 200:
+
+        st.sidebar.success(
+            "Documents uploaded"
+        )
+
+    else:
+
+        st.sidebar.error(
+            "Upload failed"
+        )
+
 # New chat button
 if st.sidebar.button("New Chat"):
 
@@ -81,13 +154,22 @@ st.sidebar.subheader("Saved Conversations")
 
 threads = fetch_threads()
 
-for thread_id in threads[::-1]:
+for thread in threads[::-1]:
 
-    if st.sidebar.button(thread_id):
+    thread_id = thread["thread_id"]
+
+    title = thread["title"]
+
+    if st.sidebar.button(
+        title,
+        key=thread_id
+    ):
 
         st.session_state.thread_id = thread_id
 
-        st.session_state.message_history = load_conversation(thread_id)
+        st.session_state.message_history = (
+            load_conversation(thread_id)
+        )
 
         st.rerun()
 

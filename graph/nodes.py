@@ -1,8 +1,8 @@
 from graph.state import ChatState
 from services.llm_service import llm
-from tools.basic_tools import multiply
+from tools.basic_tools import multiply, search_uploaded_documents
 
-tools = [multiply]
+tools = [multiply, search_uploaded_documents]
 llm_with_tools = llm.bind_tools(tools)
 
 def chat_node(state: ChatState):
@@ -13,5 +13,5 @@ def chat_node(state: ChatState):
     
     """
     messages = state['messages']
-    response = llm.invoke(messages)
+    response = llm_with_tools.invoke(messages)
     return {"messages": [response]}
